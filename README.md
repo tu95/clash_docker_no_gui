@@ -1,49 +1,64 @@
 # Clash Docker 一键启动工具
 
-一个简单的Clash + YACD Docker部署工具，通过订阅链接一键启动。
+适用于linux服务器无gui图形页面环境。通过docker启动Clash + YACD控制面板来管理代理clash，为本机设置代理。
 
-## 文件说明
-
-- `docker-compose.yml` - Docker服务配置
-- `clash_docker.py` - 一键启动脚本
-- `uninstall.py` - 一键卸载脚本
-
-## 使用方法
+## 使用步骤
 
 ### 1. 安装依赖
-
 ```bash
-# 安装Python依赖
-pip3 install pyyaml
-
-# 或者使用apt安装
-apt update && apt install -y python3-yaml
+pip3 install pyyaml requests
 ```
 
 ### 2. 准备配置文件
-
-将你的Clash配置文件重命名为 `config.yaml` 并放在当前目录：
-
+将Clash配置文件（.yaml或.yml格式）放在当前目录：
 ```bash
-# 例如从ClashX Pro导出配置后重命名
-mv ~/Downloads/clash_config.yaml config.yaml
+mv ~/Downloads/clash_config.yaml ./config.yaml
 ```
 
 ### 3. 一键启动
-
 ```bash
-# 直接启动
-python3 clash_docker.py
-
-# 查看代理状态
-python3 clash_docker.py status
+python3 start_clash_docker.py
 ```
 
-### 3. 访问服务
+### 4. 测试和使用
+```bash
+# 测试代理连通性
+python3 test_proxy.py
 
+# 查看API密钥
+cat clash_secret.txt
+
+# 查看代理状态
+python3 show_secret.py
+```
+
+### 5. 访问服务
+在yacd输入API Base URL和Secret
 - **YACD管理界面**: http://服务器IP:8080
-- **代理端口**: 7890 (混合代理), 7891 (SOCKS5)
-- **API密钥**: dler
+- **代理端口**: http://127.0.0.1:7890 (HTTP/SOCKS5)
+- **API端口**: http://127.0.0.1:9090
+
+### 6. 卸载服务
+```bash
+python3 uninstall.py
+```
+
+## 代理使用
+
+### 命令行使用
+```bash
+# HTTP代理
+curl --proxy http://127.0.0.1:7890 http://httpbin.org/ip
+
+# 设置环境变量
+export http_proxy=http://127.0.0.1:7890
+export https_proxy=http://127.0.0.1:7890
+```
+
+### 浏览器配置
+- **代理地址**: 127.0.0.1
+- **代理端口**: 7890
+- **代理类型**: HTTP/SOCKS5
 
 ## 管理命令
 
@@ -59,29 +74,13 @@ docker compose down
 
 # 重启服务
 docker compose restart
-
-## 卸载
-
-```bash
-# 一键卸载
-python3 uninstall.py
 ```
 
-## 功能特点
+## 文件说明
 
-✅ **一键启动**: 直接导入config.yaml文件启动  
-✅ **自动获取**: 自动获取服务器IP和代理状态  
-✅ **一键卸载**: 完全清理Docker环境  
-✅ **自动过滤**: 自动过滤Auto - UrlTest  
-✅ **Docker适配**: 自动适配Docker环境  
-✅ **代理测试**: 自动测试代理连接  
-✅ **中文界面**: 完整的中文提示  
+- `start_clash_docker.py` - 一键启动脚本
+- `test_proxy.py` - 代理测试脚本
+- `uninstall.py` - 卸载脚本
+- `config/config.yaml` - Clash配置文件
+- `clash_secret.txt` - API密钥文件
 
-## 注意事项
-
-1. 确保Docker和Docker Compose已安装
-2. 确保config.yaml文件格式正确
-3. 配置文件必须是Clash YAML格式
-4. 支持各种代理类型：ss、ssr、vmess、trojan等
-5. 需要安装requests库：`pip3 install requests`
-6. **默认会替换所有规则为简化版本**，避免Docker环境中的复杂规则加载问题 

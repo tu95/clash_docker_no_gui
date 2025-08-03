@@ -1,5 +1,5 @@
-config.yaml
+*.yaml
+*.yml
+config/*.db
 Country.mmdb
-config/cache.db
-config/config.yaml
-config/Country.mmdb
+clash_secret.txt

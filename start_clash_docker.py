@@ -16,6 +16,8 @@ import requests
 import json
 import zipfile
 import tempfile
+import secrets
+import string
 
 def print_status(message, status="INFO"):
     """打印状态信息"""
@@ -62,10 +64,15 @@ def get_proxy_info():
     max_retries = 10
     for i in range(max_retries):
         try:
-            # 测试API连接 - 使用服务器IP
+            # 从本地文件读取密钥
+            secret = load_secret_from_file()
+            if not secret:
+                secret = 'dler'  # 如果读取失败，使用默认值
+            
+            # 测试API连接 - 使用本地地址
             response = requests.get(
-                "http://117.72.118.25:9090/proxies",
-                headers={"Authorization": "Bearer dler"},
+                "http://127.0.0.1:9090/proxies",
+                headers={"Authorization": f"Bearer {secret}"},
                 timeout=3
             )
             
@@ -101,6 +108,16 @@ def get_proxy_info():
 
 def show_proxy_status():
     """显示代理状态"""
+    print_status("检查容器状态...", "PROCESSING")
+    
+    # 检查clash容器是否运行
+    success, output = run_command("docker ps --filter name=clash --format '{{.Status}}'")
+    if not success or "Up" not in output:
+        print_status("❌ Clash容器未启动", "ERROR")
+        print_status("请先运行: python3 start_clash_docker.py", "INFO")
+        sys.exit(1)
+    
+    print_status("✅ Clash容器运行正常", "SUCCESS")
     print_status("获取代理状态...", "PROCESSING")
     
     # 获取服务器IP
@@ -110,25 +127,19 @@ def show_proxy_status():
     proxy_info = get_proxy_info()
     
     if proxy_info:
-        print("\n📊 代理状态:")
+        print("\n📊 代理统计:")
         print("=" * 50)
+        
+        total_groups = len(proxy_info)
+        total_proxies = sum(len(info.get('all', [])) for info in proxy_info.values())
+        
+        print(f"🔗 代理组数量: {total_groups}")
+        print(f"📡 总代理数量: {total_proxies}")
         
         for group_name, info in proxy_info.items():
             current = info.get('now', 'Unknown')
             all_proxies = info.get('all', [])
-            
-            print(f"🔗 {group_name}:")
-            print(f"   当前选择: {current}")
-            print(f"   可用代理: {len(all_proxies)} 个")
-            
-            # 显示前5个代理
-            if all_proxies:
-                print("   代理列表:")
-                for i, proxy in enumerate(all_proxies[:5]):
-                    print(f"     {i+1}. {proxy}")
-                if len(all_proxies) > 5:
-                    print(f"     ... 还有 {len(all_proxies) - 5} 个")
-            print()
+            print(f"   • {group_name}: {len(all_proxies)} 个代理 (当前: {current})")
     else:
         print("\n⚠️  代理信息获取失败")
         print("可能的原因:")
@@ -136,16 +147,25 @@ def show_proxy_status():
         print("  • API端口未就绪")
         print("  • 配置文件有问题")
         print("建议:")
-        print("  • 等待几分钟后重试: python3 clash_docker.py status")
+        print("  • 等待几分钟后重试: python3 test_proxy.py")
         print("  • 查看日志: docker compose logs clash")
+    
+    # 读取生成的密钥
+    secret = load_secret_from_file()
+    if not secret:
+        secret = 'dler'
     
     if server_ip:
         print("🌐 访问信息:")
         print("=" * 50)
         print(f"YACD管理界面: http://{server_ip}:8080")
-        print(f"代理端口: {server_ip}:7890 (HTTP/SOCKS5)")
-        print(f"API端口: {server_ip}:9090")
-        print(f"API密钥: dler")
+        print(f"----- 在yacd页面中输入URL还有API密钥 -----")
+        print(f"API端口: http://127.0.0.1:9090")
+        print(f"API密钥: {secret}")
+        print(f"使用代理：http://127.0.0.1:7890")
+        print("设置终端代理：")
+        print(f"export http_proxy=http://127.0.0.1:7890")
+        print(f"export https_proxy=http://127.0.0.1:7890")
 
 def load_config(file_path):
     """加载配置文件"""
@@ -177,8 +197,44 @@ def load_config(file_path):
         print_status(f"读取文件失败: {e}", "ERROR")
         return None
 
+def generate_random_secret(length=64):
+    """生成随机密钥"""
+    characters = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(characters) for _ in range(length))
+
+def save_secret_to_file(secret):
+    """保存密钥到本地文件"""
+    try:
+        with open("clash_secret.txt", 'w') as f:
+            f.write(secret)
+        print_status("API密钥已保存到: clash_secret.txt", "SUCCESS")
+        return True
+    except Exception as e:
+        print_status(f"保存密钥失败: {e}", "ERROR")
+        return False
+
+def load_secret_from_file():
+    """从本地文件读取密钥"""
+    try:
+        if os.path.exists("clash_secret.txt"):
+            with open("clash_secret.txt", 'r') as f:
+                return f.read().strip()
+        return None
+    except:
+        return None
+
 def create_docker_config(config):
     """创建Docker环境配置"""
+    # 检查是否已有密钥文件
+    secret = load_secret_from_file()
+    if not secret:
+        # 生成新的随机密钥
+        secret = generate_random_secret()
+        # 保存到文件
+        save_secret_to_file(secret)
+    else:
+        print_status("使用已存在的API密钥", "INFO")
+    
     # 设置Docker环境需要的配置
     config['port'] = 7890
     config['socks-port'] = 7891
@@ -187,7 +243,8 @@ def create_docker_config(config):
     config['mode'] = 'Rule'
     config['log-level'] = 'info'
     config['external-controller'] = '0.0.0.0:9090'
-    config['secret'] = 'dler'
+    # 强制使用本地文件中的密钥，覆盖原始配置中的secret
+    config['secret'] = secret
     
     # 添加DNS配置
     config['dns'] = {
@@ -415,56 +472,48 @@ def check_service_status():
         print_status("服务未正常运行", "ERROR")
         return False
 
-def test_proxy(wait_time=5):
-    """测试代理连通性"""
-    print_status("开始连通性测试...", "PROCESSING")
-    time.sleep(wait_time)  # 等待服务完全启动
+
+
+def get_yaml_files():
+    """获取当前目录下所有的.yaml文件"""
+    yaml_files = []
+    for file in os.listdir('.'):
+        if file.endswith('.yaml') or file.endswith('.yml') and file != 'docker-compose.yml':
+            yaml_files.append(file)
+    return sorted(yaml_files)
+
+def select_config_file():
+    """选择配置文件"""
+    yaml_files = get_yaml_files()
     
-    # 测试网站列表
-    test_sites = [
-        {"name": "Google", "url": "https://www.google.com"},
-        {"name": "YouTube", "url": "https://www.youtube.com"},
-        {"name": "GitHub", "url": "https://github.com"}
-    ]
+    if not yaml_files:
+        print_status("当前目录下没有找到.yaml或.yml文件", "ERROR")
+        print_status("请将Clash配置文件放在当前目录", "INFO")
+        sys.exit(1)
     
-    success_count = 0
-    total_count = len(test_sites)
+    if len(yaml_files) == 1:
+        print_status(f"发现配置文件: {yaml_files[0]}", "SUCCESS")
+        return yaml_files[0]
     
-    print_status("通过代理测试网站连通性:", "INFO")
+    # 多个文件时让用户选择
+    print_status(f"发现 {len(yaml_files)} 个配置文件:", "INFO")
+    print("=" * 50)
+    for i, file in enumerate(yaml_files, 1):
+        print(f"  {i}. {file}")
+    print("=" * 50)
     
-    for site in test_sites:
+    while True:
         try:
-            # 使用session来避免影响全局设置
-            session = requests.Session()
-            session.proxies = {'http': 'http://127.0.0.1:7890', 'https': 'http://127.0.0.1:7890'}
-            
-            response = session.get(site['url'], timeout=10)
-            if response.status_code == 200:
-                print_status(f"✅ {site['name']}: 连接成功 (HTTP {response.status_code})", "SUCCESS")
-                success_count += 1
+            choice = input(f"请选择配置文件 (1-{len(yaml_files)}): ").strip()
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(yaml_files):
+                selected_file = yaml_files[choice_num - 1]
+                print_status(f"已选择: {selected_file}", "SUCCESS")
+                return selected_file
             else:
-                print_status(f"⚠️ {site['name']}: 连接异常 (HTTP {response.status_code})", "WARNING")
-        except Exception as e:
-            print_status(f"❌ {site['name']}: 连接失败 - {str(e)}", "ERROR")
-    
-    # 测试直连（应该失败）
-    print_status("测试直连（应该失败）:", "INFO")
-    try:
-        response = requests.get('https://www.google.com', timeout=5)
-        print_status("⚠️ 直连Google成功，可能代理未生效", "WARNING")
-    except Exception as e:
-        print_status("✅ 直连Google失败（正常，证明代理生效）", "SUCCESS")
-    
-    # 总结
-    if success_count == total_count:
-        print_status(f"🎉 连通性测试完成！所有{total_count}个网站均可正常访问", "SUCCESS")
-        return True
-    elif success_count > 0:
-        print_status(f"⚠️ 连通性测试完成！{success_count}/{total_count}个网站可访问", "WARNING")
-        return True
-    else:
-        print_status("❌ 连通性测试失败！所有网站均无法访问", "ERROR")
-        return False
+                print_status(f"请输入 1-{len(yaml_files)} 之间的数字", "WARNING")
+        except ValueError:
+            print_status("请输入有效的数字", "WARNING")
 
 def main():
     """主函数"""
@@ -475,17 +524,12 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "status":
         show_proxy_status()
         print("\n" + "="*50)
-        test_proxy(wait_time=2)  # status命令使用较短的等待时间
+        # 调用独立的测试脚本
+        os.system("python3 test_proxy.py")
         return
     
-    # 配置文件路径
-    config_file = "config.yaml"
-    
-    # 检查配置文件是否存在
-    if not os.path.exists(config_file):
-        print_status(f"配置文件不存在: {config_file}", "ERROR")
-        print_status("请将Clash配置文件重命名为 'config.yaml' 并放在当前目录", "INFO")
-        sys.exit(1)
+    # 选择配置文件
+    config_file = select_config_file()
     
     # 加载配置文件
     config = load_config(config_file)
@@ -507,19 +551,34 @@ def main():
     if not check_service_status():
         sys.exit(1)
     
-    # 测试代理
-    test_proxy()
-    
     print("\n🎉 启动完成！")
     
-    # 显示代理状态
-    show_proxy_status()
+    # 获取服务器IP用于显示访问信息
+    server_ip = get_server_ip()
     
-    print("\n💡 管理命令:")
-    print("   查看状态: python3 clash_docker.py status")
-    print("   查看日志: docker compose logs clash")
-    print("   停止服务: docker compose down")
-    print("   重启服务: docker compose restart")
+    # 读取生成的密钥
+    secret = load_secret_from_file()
+    if not secret:
+        secret = 'dler'
+    
+    print("\n🌐 访问信息:")
+    print("=" * 50)
+    if server_ip:
+        print(f"YACD管理界面: http://{server_ip}:8080")
+        print(f"代理端口: {server_ip}:7890 (HTTP/SOCKS5)")
+    else:
+        print("YACD管理界面: http://服务器IP:8080")
+        print("代理端口: 服务器IP:7890 (HTTP/SOCKS5)")
+
+    print("=" * 50)
+    print("\n")
+    print("在yacd页面中输入URL还有API密钥:")
+    print("API端口: http://127.0.0.1:9090")
+    print(f"API密钥: {secret}")
+        
+    print("\n💡 查看密码: python3 show_secret.py")
+    print("\n💡 测试连通性: python3 test_proxy.py")
+    print("\n💡 卸载服务: python3 uninstall.py")
 
 if __name__ == "__main__":
     main() 
