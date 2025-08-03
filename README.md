@@ -83,4 +83,5 @@ python3 uninstall.py
 2. 确保config.yaml文件格式正确
 3. 配置文件必须是Clash YAML格式
 4. 支持各种代理类型：ss、ssr、vmess、trojan等
-5. 需要安装requests库：`pip3 install requests` 
+5. 需要安装requests库：`pip3 install requests`
+6. **默认会替换所有规则为简化版本**，避免Docker环境中的复杂规则加载问题 
