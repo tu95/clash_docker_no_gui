@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  clash:
+    image: dreamacro/clash:latest
+    container_name: clash
+    restart: unless-stopped
+    ports:
+      - "7890:7890"  # 混合代理端口
+      - "7891:7891"  # SOCKS5代理
+      - "9090:9090"  # API端口
+    volumes:
+      - ./config:/root/.config/clash
+    environment:
+      - TZ=Asia/Shanghai
+    networks:
+      - clash_network
+
+  yacd:
+    image: haishanh/yacd:latest
+    container_name: yacd
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      - CLASH_API_BASE_URL=http://clash:9090
+      - CLASH_API_SECRET=dler
+    depends_on:
+      - clash
+    networks:
+      - clash_network
+
+networks:
+  clash_network:
+    driver: bridge 
